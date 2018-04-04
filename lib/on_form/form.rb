@@ -75,12 +75,16 @@ module OnForm
       delegate :to_model, to: backing_model_name if convert_to_model
     end
 
-    def self.expose_collection_of(association_name, on: nil, prefix: nil, suffix: nil, as: nil, allow_insert: true, allow_update: true, allow_destroy: false, &block)
-      exposed_name = as || "#{prefix}#{association_name}#{suffix}"
+    def self.expose_collection_of(association_name, options = {} , &block)
+      default_options = { on: nil, prefix: nil, suffix: nil, as: nil}
+      options = default_options.merge(options)
+      options.assert_valid_keys(:on, :prefix, :suffix, :as, :allow_insert, :allow_update, :allow_destroy, :reject_if)
+
+      exposed_name = options[:as] || "#{options[:prefix]}#{association_name}#{options[:suffix]}"
       singular_name = exposed_name.to_s.singularize
       association_name = association_name.to_sym
 
-      on = prepare_model_to_expose!(on)
+      on = prepare_model_to_expose!(options[:on])
 
       collection_form_class = Class.new(OnForm::Form)
       const_set(exposed_name.to_s.classify + "Form", collection_form_class)
@@ -93,10 +97,14 @@ module OnForm
 
       define_method(exposed_name) do
         collection_wrappers[on] ||= {}
-        collection_wrappers[on][association_name] ||= CollectionWrapper.new(backing_model_instance(on), association_name, collection_form_class, allow_insert, allow_update, allow_destroy) # used by action_view's fields_for, and by the following lines
+        collection_wrappers[on][association_name] ||= CollectionWrapper.new(
+          backing_model_instance(on), association_name, collection_form_class,
+          options.slice(:allow_insert, :allow_update, :allow_destroy, :reject_if)
+        )
         collection_wrappers.dig(on, association_name)
       end
 
+      # used by action_view's fields_for, and by the following lines
       define_method("#{exposed_name}_attributes=") { |params| send(exposed_name).parse_collection_attributes(params) }
       define_method("_validate_#{exposed_name}_forms") { send(exposed_name).validate_forms(self) }
       validate :"_validate_#{exposed_name}_forms"
