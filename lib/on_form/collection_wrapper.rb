@@ -33,12 +33,12 @@ module OnForm
       @association_proxy.size
     end
 
-    def save_forms
+    def save_forms(validate: true)
       @loaded_forms.each do |form|
         if form.marked_for_destruction?
           form.record.destroy
         else
-          form.save!
+          form.save!(validate: validate)
         end
       end
     end
@@ -47,6 +47,14 @@ module OnForm
       @loaded_forms.collect do |form|
         add_errors_to_parent(parent_form, form) if form.invalid?
       end
+    end
+
+    def form_errors?
+      @loaded_forms.map(&:form_errors?).any?
+    end
+
+    def reset_forms_errors
+      @loaded_forms.collect(&:reset_errors)
     end
 
     def parse_collection_attributes(params)
@@ -104,6 +112,9 @@ module OnForm
       association_exposed_name = child_form.class.identity_model_name.to_s.pluralize
       child_form.errors.each do |attribute, errors|
         Array(errors).each { |error| parent_form.errors["#{association_exposed_name}.#{attribute}"] << error }
+        if parent_form.errors["#{association_exposed_name}.#{attribute}"].present?
+          parent_form.errors["#{association_exposed_name}.#{attribute}"].uniq!
+        end
       end
     end
 

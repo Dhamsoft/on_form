@@ -14,33 +14,33 @@ module OnForm
       end
     end
 
-    def invalid?
-      !valid?
-    end
-
-    def save!
-      reset_errors
+    def save!(validate: true)
       transaction do
         reset_errors
-        unless run_validations!(backing_model_validations: false)
-          backing_model_instances.each(&:valid?)
-          collect_errors
-          raise ActiveModel::ValidationError, self
-        end
-        run_callbacks :save do
-          begin
-            backing_model_instances.each { |backing_model| backing_model.save! }
-          rescue ActiveRecord::RecordInvalid, ActiveModel::ValidationError
-            collect_errors
-            raise
+
+        if validate
+          run_validations!
+
+          if !errors.empty?
+            if form_errors?
+              raise ActiveModel::ValidationError, self
+            else
+              raise ActiveRecord::RecordInvalid, self
+            end
           end
+        end
+
+        run_callbacks :save do
+          # we pass (validate: false) to avoid running the validations a second time, but we use save! to get the RecordNotFound behavior
+          backing_model_instances.each { |backing_model| backing_model.save!(validate: false) }
+          save_child_forms(validate: false)
         end
       end
       true
     end
 
-    def save
-      save!
+    def save(validate: true)
+      save!(validate: validate)
     rescue ActiveRecord::RecordInvalid, ActiveModel::ValidationError
       false
     end
@@ -73,15 +73,8 @@ module OnForm
       end
     end
 
-    def run_validations!(backing_model_validations: true)
-      super()
-      run_backing_model_validations if backing_model_validations
-      errors.empty?
-    end
-
-    def run_backing_model_validations
-      backing_model_instances.collect { |backing_model| backing_model.valid? }
-      collect_errors
+    def save_child_forms(validate: true)
+      collection_wrappers.each_value {|collection| collection.save_forms(validate: validate) }
     end
   end
 end
